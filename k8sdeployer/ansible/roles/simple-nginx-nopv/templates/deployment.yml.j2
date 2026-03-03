@@ -5,6 +5,7 @@ items:
 - apiVersion: apps/v1
   kind: Deployment
   metadata:
+    name: {{ app_name }}-deployment
     labels:
       name: {{ app_name }}-deployment
     namespace: {{ namespace }}
