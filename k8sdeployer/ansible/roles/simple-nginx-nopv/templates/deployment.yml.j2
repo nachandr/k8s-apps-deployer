@@ -23,7 +23,7 @@ items:
         - image: quay.io/migqe/nginx-unprivileged:1.23
           name: {{ app_name }}
           ports:
-          - containerPort: 8081
+          - containerPort: 8080
 - apiVersion: v1
   kind: Service
   metadata:
@@ -34,6 +34,6 @@ items:
   spec:
     ports:
     - port: 8081
-      targetPort: 8081
+      targetPort: 8080
     selector:
       app: {{ app_name }}
