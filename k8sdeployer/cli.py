@@ -26,12 +26,17 @@ def create_cluster_connection(args) -> ClusterConnection:
     token = os.environ.get('K8S_TOKEN') or args.token
     server = os.environ.get('K8S_SERVER') or args.server
     kubeconfig = args.kubeconfig or os.environ.get('KUBECONFIG')
+    context = args.context
     verify_ssl = not args.insecure_skip_tls_verify
     
     if token and server:
         return ClusterConnection(token=token, server=server, verify_ssl=verify_ssl)
     else:
-        return ClusterConnection(kubeconfig=kubeconfig, verify_ssl=verify_ssl)
+        return ClusterConnection(
+            kubeconfig=kubeconfig,
+            context=context,
+            verify_ssl=verify_ssl
+        )
 
 
 def cmd_list(args):
@@ -135,6 +140,7 @@ def main():
     # Global arguments
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose logging')
     parser.add_argument('--kubeconfig', help='Path to kubeconfig file')
+    parser.add_argument('--context', help='Kubeconfig context to use')
     parser.add_argument('--token', help='Service account token for authentication')
     parser.add_argument('--server', help='API server URL (required with --token)')
     parser.add_argument('--insecure-skip-tls-verify', action='store_true', 
