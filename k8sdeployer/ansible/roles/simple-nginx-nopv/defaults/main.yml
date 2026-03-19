@@ -1,7 +1,7 @@
 ---
 num_pods: 1
 default_replicas: "{{ num_pods }}"
-default_app_name: simple-nginx
+default_app_name: simple-nginx-nopv
 
 with_cleanup: false
 with_deploy: false
