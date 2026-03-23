@@ -84,16 +84,47 @@
   set_fact:
     pod_name: "{{ (pod.resources | first).metadata.name }}"
 
-- name: Copy redis provision script to pod
-  shell: "kubectl cp {{ role_path }}/files/redis.cmds {{ namespace }}/{{ pod_name }}:/tmp/redis.cmds -c {{ app_name }}"
-  register: result
+- name: Copy redis provision script to pod (kubernetes.core.k8s_cp)
+  kubernetes.core.k8s_cp:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    local_path: "{{ role_path }}/files/redis.cmds"
+    remote_path: /tmp/redis.cmds
+    state: to_pod
+  register: cp_result
   delay: 10
   retries: 12
-  until: result.rc == 0
+  until: cp_result is succeeded
 
-- name: Load data in redis
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/bash -c \"redis-cli -a {{ redis_password }} < /tmp/redis.cmds\""
-  register: output
-  until: output.rc == 0 and output.stdout != ''
+- name: Debug — redis.cmds copy to pod
+  ansible.builtin.debug:
+    msg:
+      pod: "{{ pod_name }}"
+      namespace: "{{ namespace }}"
+      changed: "{{ cp_result.changed | default(false) }}"
+      failed: "{{ cp_result.failed | default(false) }}"
+
+- name: Load data in redis (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/sh -c "redis-cli -a '{{ redis_password }}' < /tmp/redis.cmds"
+  register: load_result
+  until: load_result is succeeded
   delay: 10
   retries: 12
+
+- name: Debug — redis-cli batch load
+  ansible.builtin.debug:
+    msg:
+      rc: "{{ load_result.rc }}"
+      stdout: "{{ load_result.stdout | default('') }}"
+      stderr: "{{ load_result.stderr | default('') }}"

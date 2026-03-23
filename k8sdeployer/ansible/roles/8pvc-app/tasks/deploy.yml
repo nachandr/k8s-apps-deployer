@@ -19,6 +19,13 @@
     host: "{{ server }}"
     api_key: "{{ token }}"
     verify_ssl: "{{ verify_ssl }}"
+  register: deploy_result
+
+- name: Debug — manifest apply
+  ansible.builtin.debug:
+    msg:
+      changed: "{{ deploy_result.changed | default(false) }}"
+      failed: "{{ deploy_result.failed | default(false) }}"
 
 - name: Check pod status
   k8s_info:
@@ -38,48 +45,64 @@
   retries: 30
   delay: 3
 
-- name: Add some files with random data in all the PVCs
-  ansible.builtin.command: >
-    kubectl exec {{ (pod.resources|first).metadata.name }}
-    -n {{ namespace }}
-    -- /bin/sh -c "dd if=/dev/urandom of=/mnt/{{item.path}} bs=10M count={{file_size}}"
-  register: async_output
+- name: Set pod name for exec
+  ansible.builtin.set_fact:
+    pvc_pod_name: "{{ (pod.resources | first).metadata.name }}"
+  when: pod.resources is defined and (pod.resources | length) > 0
+
+# kubernetes.core.k8s_exec does not support async — run each exec synchronously.
+- name: Add some files with random data in all the PVCs (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pvc_pod_name }}"
+    container: "{{ pvc_workload_container }}"
+    command: /bin/sh -c "dd if=/dev/urandom of=/mnt/{{ item.path }} bs=10M count={{ file_size }}"
+  register: dd_exec_results
   loop: "{{ files }}"
-  async: 60
-  poll: 0
-  when: pod.resources is defined
+  when: pvc_pod_name is defined
 
-- name: Wait for the tasks of 'Add some files with random data in all the PVCs' to complete
-  async_status:
-    jid: "{{ item.ansible_job_id }}"
-  loop: "{{ async_output.results }}"
-  loop_control:
-    loop_var: item
-  register: async_result
-  until: async_result.finished
-  retries: 30
-  delay: 1
-  when: pod.resources is defined
+- name: Debug — dd exec results
+  ansible.builtin.debug:
+    var: dd_exec_results
+  when: pvc_pod_name is defined
 
-- name: Create md5 hashes for the files
-  ansible.builtin.command: >
-    kubectl exec {{ (pod.resources|first).metadata.name }}
-    -n {{ namespace }}
-    -- /bin/sh -c "cd /mnt; md5sum {{item.path}} > {{item.path}}.md5"
-  register: async_output
+- name: Assert all dd writes succeeded
+  ansible.builtin.assert:
+    that:
+      - dd_exec_results.results | length == (files | length)
+      - (dd_exec_results.results | map(attribute='rc') | map('int') | list | max) == 0
+    fail_msg: >-
+      One or more dd writes failed. Return codes:
+      {{ dd_exec_results.results | json_query('[*].rc') }}
+  when: pvc_pod_name is defined
+
+- name: Create md5 hashes for the files (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pvc_pod_name }}"
+    container: "{{ pvc_workload_container }}"
+    command: /bin/sh -c "cd /mnt; md5sum {{ item.path }} > {{ item.path }}.md5"
+  register: md5_exec_results
   loop: "{{ files }}"
-  async: 60
-  poll: 0
-  when: pod.resources is defined
+  when: pvc_pod_name is defined
 
-- name: Wait for the tasks of 'Create md5 hashes for the files' to complete
-  async_status:
-    jid: "{{ item.ansible_job_id }}"
-  loop: "{{ async_output.results }}"
-  loop_control:
-    loop_var: item
-  register: async_result
-  until: async_result.finished
-  retries: 30
-  delay: 1
-  when: pod.resources is defined
+- name: Debug — md5sum exec results
+  ansible.builtin.debug:
+    var: md5_exec_results
+  when: pvc_pod_name is defined
+
+- name: Assert all md5sum steps succeeded
+  ansible.builtin.assert:
+    that:
+      - md5_exec_results.results | length == (files | length)
+      - (md5_exec_results.results | map(attribute='rc') | map('int') | list | max) == 0
+    fail_msg: >-
+      One or more md5sum steps failed. Return codes:
+      {{ md5_exec_results.results | json_query('[*].rc') }}
+  when: pvc_pod_name is defined

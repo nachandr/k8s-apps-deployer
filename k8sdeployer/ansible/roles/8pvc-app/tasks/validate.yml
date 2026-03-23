@@ -15,27 +15,38 @@
     app_pod.resources|default([])|length > 0 and
     app_pod | json_query('resources[*].status.containerStatuses[*].ready') | flatten |difference( [true] ) | length  == 0
   retries: 30
+  delay: 3
 
-- name: Validate files in all the PVCs
-  ansible.builtin.command: >
-    kubectl exec {{ (app_pod.resources|first).metadata.name }}
-    -n {{ namespace }}
-    -- /bin/sh -c 'cd /mnt; [ "$(md5sum {{item.path}})" == "$(cat {{item.path}}.md5)" ]'
-  register: async_output
-  retries: 5
+- name: Set pod name for exec
+  ansible.builtin.set_fact:
+    pvc_pod_name: "{{ (app_pod.resources | first).metadata.name }}"
+  when: app_pod.resources is defined and (app_pod.resources | length) > 0
+
+# kubernetes.core.k8s_exec does not support async — run each check synchronously.
+- name: Validate files in all the PVCs (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pvc_pod_name }}"
+    container: "{{ pvc_workload_container }}"
+    command: /bin/sh -c "cd /mnt; [ \"$(md5sum {{ item.path }})\" = \"$(cat {{ item.path }}.md5)\" ]"
+  register: validate_exec_results
   loop: "{{ files }}"
-  async: 60
-  poll: 0
-  when: app_pod.resources is defined
+  when: pvc_pod_name is defined
 
-- name: Wait for the tasks of 'Validate files in all the PVCs' to complete
-  async_status:
-    jid: "{{ item.ansible_job_id }}"
-  loop: "{{ async_output.results }}"
-  loop_control:
-    loop_var: item
-  register: async_result
-  until: async_result.finished
-  retries: 30
-  delay: 1
-  when: app_pod.resources is defined
+- name: Debug — validation exec results
+  ansible.builtin.debug:
+    var: validate_exec_results
+  when: pvc_pod_name is defined
+
+- name: Assert all PVC checksum validations passed
+  ansible.builtin.assert:
+    that:
+      - validate_exec_results.results | length == (files | length)
+      - (validate_exec_results.results | map(attribute='rc') | map('int') | list | max) == 0
+    fail_msg: >-
+      One or more MD5 checks failed (want all rc=0). Return codes:
+      {{ validate_exec_results.results | json_query('[*].rc') }}
+  when: pvc_pod_name is defined

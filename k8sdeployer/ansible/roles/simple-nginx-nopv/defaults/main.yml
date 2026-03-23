@@ -3,6 +3,9 @@ num_pods: 1
 default_replicas: "{{ num_pods }}"
 default_app_name: simple-nginx-nopv
 
+# Container listens on this port (see deployment template)
+nginx_http_port: 8080
+
 with_cleanup: false
 with_deploy: false
 with_validate: false

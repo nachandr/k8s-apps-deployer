@@ -3,7 +3,10 @@ with_deploy: false
 with_cleanup: false
 with_validate: false
 
-app_name: app-with-8pvc
+app_name: 8pvc-app
+# Must match containers[].name in templates/deployment.yml.j2
+pvc_workload_container: alpine
+
 storage_size: 1Gi
 accessmode: ReadWriteOnce
 image: quay.io/migqe/alpine@sha256:25d4b2dad40a77c913a1321e23c051848ac4037b4bd3bd74a5dd5fd3fa78fd50

@@ -99,6 +99,8 @@ kind: Deployment
 metadata:
   name: {{ app_name }}
   namespace: {{ namespace }}
+  labels:
+    name: {{ app_name }}
 spec:
   replicas: 1
   selector:

@@ -21,13 +21,28 @@
   set_fact:
     pod_name: "{{ (pod.resources|first).metadata.name }}"
 
-- name: Retrieve and validate inserted data
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/bash -c \"redis-cli -a {{ redis_password }} get mytestkey\""
+- name: Retrieve and validate inserted data (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: redis-cli -a '{{ redis_password }}' get mytestkey
   register: output
-  until: output.rc == 0 and output.stdout != ''
+  until: output.rc == 0 and output.stdout | default('') | length > 0
   delay: 10
   retries: 12
 
-- fail:
-    msg: "Inserted data not present"
+- name: Debug — redis GET mytestkey
+  ansible.builtin.debug:
+    msg:
+      rc: "{{ output.rc }}"
+      stdout: "{{ output.stdout | default('') }}"
+      stderr: "{{ output.stderr | default('') }}"
+
+- name: Fail if inserted data not present
+  fail:
+    msg: "Inserted data not present (expected 'Hello world' in stdout)"
   when: not (output.stdout is search("Hello world"))
