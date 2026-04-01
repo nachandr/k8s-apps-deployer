@@ -94,9 +94,14 @@ def cmd_remove(args):
         
         app = factory.create_app(args.application, cluster, args.namespace, logger)
         
+        # Parse extra vars if provided
+        extra_vars = {}
+        if args.extra_vars:
+            extra_vars = json.loads(args.extra_vars)
+
         logger.info(f'Removing {args.application} from namespace: {app.namespace}')
         
-        if not app.remove():
+        if not app.remove(extra_vars=extra_vars):
             logger.error("Application removal failed")
             sys.exit(1)
         
@@ -117,9 +122,14 @@ def cmd_validate(args):
         
         app = factory.create_app(args.application, cluster, args.namespace, logger)
         
+        # Parse extra vars if provided
+        extra_vars = {}
+        if args.extra_vars:
+            extra_vars = json.loads(args.extra_vars)
+
         logger.info(f'Validating {args.application} in namespace: {app.namespace}')
         
-        if not app.validate():
+        if not app.validate(extra_vars=extra_vars):
             logger.error("Application validation failed")
             sys.exit(1)
         
@@ -163,11 +173,13 @@ def main():
     remove_parser = subparsers.add_parser('remove', help='Remove an application')
     remove_parser.add_argument('application', help='Application name to remove')
     remove_parser.add_argument('-n', '--namespace', help='Namespace to remove from')
+    remove_parser.add_argument('-e', '--extra-vars', help='Extra variables as JSON string')
     
     # Validate command
     validate_parser = subparsers.add_parser('validate', help='Validate an application')
     validate_parser.add_argument('application', help='Application name to validate')
     validate_parser.add_argument('-n', '--namespace', help='Namespace to validate in')
+    validate_parser.add_argument('-e', '--extra-vars', help='Extra variables as JSON string')
     
     args = parser.parse_args()
     
