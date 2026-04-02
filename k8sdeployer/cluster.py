@@ -1,6 +1,8 @@
 """Cluster connection module supporting both kubeconfig and service account token authentication"""
 import logging
+import ssl
 from typing import Optional
+
 import kubernetes
 from kubernetes.client import Configuration
 from openshift.dynamic import DynamicClient
@@ -44,19 +46,36 @@ class ClusterConnection:
                 kubernetes.config.load_kube_config(config_file=kubeconfig, context=context)
             else:
                 kubernetes.config.load_kube_config(context=context)
-            
+
             configuration = Configuration.get_default_copy()
+
+            # Apply verify_ssl setting with proper precedence:
+            # CLI flag (--insecure-skip-tls-verify) > Kubeconfig setting > Default
+            if not self.verify_ssl:
+                # CLI flag explicitly set to skip verification - override kubeconfig
+                configuration.verify_ssl = False
+
+            # Update instance variable to match actual configuration
+            # (important for Ansible which reads self.cluster.verify_ssl)
+            # This will be either:
+            # - False if CLI flag was set, or
+            # - Whatever load_kube_config() set based on kubeconfig (respects insecure-skip-tls-verify)
+            self.verify_ssl = configuration.verify_ssl
+
             self.client = DynamicClient(kubernetes.client.ApiClient(configuration))
-            
+
             # Extract token from kubeconfig
             api_key = configuration.get_api_key_with_prefix('authorization')
             if api_key:
                 self.token = api_key.replace('Bearer', '').strip()
-            
+
             # Get server URL
             self.server = configuration.host
-            
+
             logger.info(f"Connected to cluster: {self.server}")
+
+            # Validate connectivity early to fail fast on SSL errors
+            self._validate_connection()
         except Exception as e:
             logger.error(f"Failed to connect with kubeconfig: {e}")
             raise
@@ -73,12 +92,53 @@ class ClusterConnection:
             configuration.verify_ssl = self.verify_ssl
             
             self.client = DynamicClient(kubernetes.client.ApiClient(configuration))
-            
+
             logger.info(f"Connected to cluster: {self.server} using token")
+
+            # Validate connectivity early to fail fast on SSL errors
+            self._validate_connection()
         except Exception as e:
             logger.error(f"Failed to connect with token: {e}")
             raise
-    
+
+    def _validate_connection(self):
+        """Validate cluster connectivity by making a simple API call.
+
+        This fails fast with a clear error message if there are SSL verification issues,
+        but ignores permission errors since the user may not have cluster-level access.
+        """
+        try:
+            # Make a simple API call to verify connectivity
+            # Try to get API resources (doesn't require any specific permissions)
+            self.client.resources.get(api_version='v1', kind='Namespace')
+            logger.debug("Cluster connectivity validated successfully")
+        except Exception as e:
+            # Check if this is an SSL certificate verification error
+            # Check both the exception type and error message for robustness
+            is_ssl_error = False
+
+            # Check exception type (most reliable)
+            if isinstance(e, ssl.SSLError):
+                is_ssl_error = True
+            else:
+                # Check error message as fallback (for wrapped SSL errors)
+                error_msg = str(e).upper()
+                if 'SSL' in error_msg and ('CERTIFICATE' in error_msg or 'VERIFY' in error_msg):
+                    is_ssl_error = True
+
+            if is_ssl_error:
+                logger.error(
+                    f"SSL certificate verification failed when connecting to {self.server}. "
+                    f"Either:\n"
+                    f"  1. Add 'insecure-skip-tls-verify: true' to your kubeconfig cluster configuration, or\n"
+                    f"  2. Pass --insecure-skip-tls-verify flag to k8sdeploy, or\n"
+                    f"  3. Add the cluster's CA certificate to your kubeconfig"
+                )
+                raise
+
+            # Ignore other errors (like permission denied) - they'll surface later during actual operations
+            logger.debug(f"Connectivity check completed (non-SSL error ignored): {str(e)}")
+
     def get(self, api_version: str, kind: str, name: str, namespace: Optional[str] = None):
         """Get a resource from the cluster"""
         try:
@@ -142,7 +202,11 @@ class ClusterConnection:
         """Get cluster version"""
         try:
             if self.is_openshift():
-                version_info = self.client.resources.get(api_version='config.openshift.io/v1', kind='ClusterVersion').get(name='version')
+                cluster_version = self.client.resources.get(
+                    api_version='config.openshift.io/v1',
+                    kind='ClusterVersion'
+                )
+                version_info = cluster_version.get(name='version')
                 return version_info.get('status', {}).get('desired', {}).get('version', 'unknown')
             else:
                 # For Kubernetes, try to get version from API
