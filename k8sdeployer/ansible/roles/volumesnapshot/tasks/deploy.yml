@@ -1,5 +1,5 @@
 ---
-- name: Ensure namespace exists
+- name: Ensure namespace exists (admin users only)
   k8s:
     state: present
     definition:
@@ -10,9 +10,9 @@
     host: "{{ server }}"
     api_key: "{{ token }}"
     verify_ssl: "{{ verify_ssl }}"
-  when: non_admin_user == false
+  when: non_admin_user is defined and non_admin_user == false
 
-- name: Ensure namespaces are present
+- name: Verify namespace exists (read-only check for admin users)
   k8s_info:
     host: "{{ server }}"
     api_key: "{{ token }}"
@@ -20,9 +20,11 @@
     kind: Namespace
     name: "{{ namespace }}"
   register: ns_check
-  until: ns_check.resources | length > 0
+  until: ns_check.resources is defined and ns_check.resources | length > 0
   retries: 6
   delay: 5
+  failed_when: ns_check.resources is not defined or ns_check.resources | length == 0
+  when: non_admin_user is not defined or non_admin_user == false
 
 - name: Create a PVC
   k8s:

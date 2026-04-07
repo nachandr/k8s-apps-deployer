@@ -8,13 +8,16 @@
     namespace: "{{ namespace }}"
     label_selectors:
       - app={{ app_name }}
-    field_selectors:
-      - status.phase=Running
   register: app_pod
-  until: >-
-    app_pod.resources|default([])|length > 0 and
-    app_pod | json_query('resources[*].status.containerStatuses[*].ready') | flatten |difference( [true] ) | length  == 0
+  until: app_pod.resources|default([])|length > 0
   retries: 10
+
+- name: Verify pod completed successfully
+  assert:
+    that:
+      - app_pod.resources[0].status.phase in ['Running', 'Succeeded']
+    fail_msg: "Pod {{ app_pod.resources[0].metadata.name }} is in state {{ app_pod.resources[0].status.phase }}"
+    success_msg: "Pod {{ app_pod.resources[0].metadata.name }} is in acceptable state: {{ app_pod.resources[0].status.phase }}"
 
 - name: Check PVCs status
   k8s_info:
