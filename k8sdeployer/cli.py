@@ -66,7 +66,9 @@ def cmd_deploy(args):
         extra_vars = {}
         if args.extra_vars:
             extra_vars = json.loads(args.extra_vars)
-        
+        if args.context:
+            extra_vars['context'] = args.context  
+
         logger.info(f'Deploying {args.application} in namespace: {app.namespace}')
         
         if args.force_cleanup:
@@ -98,6 +100,8 @@ def cmd_remove(args):
         extra_vars = {}
         if args.extra_vars:
             extra_vars = json.loads(args.extra_vars)
+        if args.context:
+            extra_vars['context'] = args.context
 
         logger.info(f'Removing {args.application} from namespace: {app.namespace}')
         
@@ -126,6 +130,8 @@ def cmd_validate(args):
         extra_vars = {}
         if args.extra_vars:
             extra_vars = json.loads(args.extra_vars)
+        if args.context:
+            extra_vars['context'] = args.context
 
         logger.info(f'Validating {args.application} in namespace: {app.namespace}')
         

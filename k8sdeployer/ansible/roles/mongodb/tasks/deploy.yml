@@ -87,14 +87,14 @@
     pod_name: "{{ (pod.resources | first).metadata.name }}"
 
 - name: Copy mongodb provision script to pod
-  shell: "kubectl cp {{ role_path }}/files/mongodb.js {{ namespace }}/{{ pod_name }}:/tmp/mongodb.js -c {{ app_name }}"
+  shell: "kubectl cp {{ role_path }}/files/mongodb.js {{ namespace }}/{{ pod_name }}:/tmp/mongodb.js -c {{ app_name }} --context {{ context }}"
   register: result
   retries: 10
   until: result.rc == 0
   delay: 5
 
 - name: Load data in mongodb database
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- mongosh sampledb --file /tmp/mongodb.js || kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/bash -c \"mongo sampledb < /tmp/mongodb.js\""
+  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} --context {{ context }} -- mongosh sampledb --file /tmp/mongodb.js || kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} --context {{ context }} -- /bin/bash -c \"mongo sampledb < /tmp/mongodb.js\""
   register: output
   until: output.rc == 0
   retries: 5

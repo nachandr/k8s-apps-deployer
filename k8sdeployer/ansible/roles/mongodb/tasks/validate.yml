@@ -40,7 +40,7 @@
     pod_name: "{{ (pod.resources|first).metadata.name }}"
 
 - name: Retrieve and validate inserted data
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- mongosh sampledb --eval 'EJSON.stringify(db.test_db.find().toArray())' --quiet --json=canonical || kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/bash -c \"mongo sampledb -u {{ mongodb_user }} -p {{ mongodb_pass }} --eval 'db.test_db.find().forEach(function(results){results._id=results._id.valueOf();printjson(results)})' --quiet\""
+  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} --context {{ context }} -- mongosh sampledb --eval 'EJSON.stringify(db.test_db.find().toArray())' --quiet --json=canonical || kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} --context {{ context }} -- /bin/bash -c \"mongo sampledb -u {{ mongodb_user }} -p {{ mongodb_pass }} --eval 'db.test_db.find().forEach(function(results){results._id=results._id.valueOf();printjson(results)})' --quiet\""
   register: output
   until: output.rc == 0 and output.stdout != ''
   retries: 5
