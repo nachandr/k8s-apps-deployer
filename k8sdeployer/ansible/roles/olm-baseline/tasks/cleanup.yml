@@ -1,0 +1,13 @@
+---
+- name: Remove namespace
+  k8s:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    name: "{{ namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: absent
+    wait: yes
+    wait_timeout: 600
+  when: non_admin_user | bool == false

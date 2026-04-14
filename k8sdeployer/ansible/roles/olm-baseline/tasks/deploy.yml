@@ -1,0 +1,43 @@
+---
+- name: Ensure namespace exists
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ namespace }}"
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+  when: non_admin_user == false
+
+- name: Ensure namespace is present
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    kind: Namespace
+    name: "{{ namespace }}"
+  register: ns_check
+  until: ns_check.resources | length > 0
+  retries: 6
+  delay: 5
+
+- name: Deploy service account, role and role binding
+  k8s:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    state: present
+    namespace: "{{ namespace }}"
+    definition: "{{ lookup('template', 'empty-template.yml.j2') | from_yaml_all | list }}"
+
+- name: Deploy OLM OperatorGroup, CatalogSource, and Subscription
+  k8s:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    state: present
+    namespace: "{{ namespace }}"
+    definition: "{{ lookup('template', 'olm-baseline.yml.j2') | from_yaml_all | list }}"

@@ -1,0 +1,51 @@
+---
+- name: Check Role
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    api_version: "{{ role_api }}"
+    kind: Role
+    namespace: "{{ namespace }}"
+    name: "{{ test_rolename }}"
+  register: rolenm
+  until: rolenm.resources | length > 0
+  retries: 30
+
+- name: Check RoleBinding
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    api_version: "{{ rolebinding_api }}"
+    kind: RoleBinding
+    name: "{{ rolebinding_name }}"
+    namespace: "{{ namespace }}"
+  register: role_binding
+  until: role_binding.resources | length > 0
+  retries: 30
+
+- name: Verify RoleBinding references expected role namespace
+  fail:
+    msg: Wrong namespace in rolebinding roleRef
+  when: role_binding.resources[0].get('roleRef', {}).get('namespace', namespace) != namespace and role_binding.resources[0].get('roleRef', {}).get('namespace') is defined
+
+- name: Collect matching service account subjects from RoleBinding
+  set_fact:
+    matching_sa_subjects: >-
+      {{
+        role_binding.resources[0].get('subjects', [])
+        | selectattr('kind', 'equalto', 'ServiceAccount')
+        | selectattr('name', 'equalto', 'basic-sa')
+        | list
+      }}
+
+- name: Verify RoleBinding contains expected service account subject
+  fail:
+    msg: "RoleBinding {{ rolebinding_name }} does not reference ServiceAccount basic-sa"
+  when: matching_sa_subjects | length == 0
+
+- name: Verify RoleBinding service account subject namespace
+  fail:
+    msg: "Wrong namespace in rolebinding service account: expected {{ namespace }}, got {{ matching_sa_subjects[0].get('namespace', '') }}"
+  when: matching_sa_subjects[0].get('namespace', namespace) != namespace

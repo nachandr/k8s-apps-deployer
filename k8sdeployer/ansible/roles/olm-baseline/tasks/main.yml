@@ -1,0 +1,12 @@
+---
+- name: Clean up application
+  import_tasks: cleanup.yml
+  when: with_cleanup | default(false) | bool
+
+- name: Deploy application
+  import_tasks: deploy.yml
+  when: with_deploy | default(false) | bool
+
+- name: Validate application
+  import_tasks: validate.yml
+  when: with_validate | default(false) | bool
