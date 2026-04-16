@@ -1,0 +1,47 @@
+---
+- name: Ensure namespace exists
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ namespace }}"
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+  when: non_admin_user | bool == false
+
+- name: Create PVC for cronjob
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'pvc.yml.j2') | from_yaml }}"
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+
+- name: Wait for PVC to be bound
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    kind: PersistentVolumeClaim
+    namespace: "{{ namespace }}"
+    name: "{{ pvc_name }}"
+  register: pvc_info
+  until: >-
+    pvc_info.resources | length > 0 and
+    pvc_info.resources[0].status.phase == "Bound"
+  retries: 20
+  delay: 5
+
+- name: Deploy cronjob with PVC mount
+  k8s:
+    state: present
+    definition: "{{ lookup('template', 'cronjob_with_pvc.yml.j2') | from_yaml }}"
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+  vars:
+    app_name: "{{ ext_app_name }}"
+    docker_image: "{{ external_image_name }}"

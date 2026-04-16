@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app: '{{ app_name }}'
+  name: '{{ app_name }}'
+  namespace: '{{ namespace }}'
+spec:
+  schedule: '*/1 * * * *'
+  jobTemplate:
+    metadata:
+      labels:
+        cronowner: '{{ app_name }}'
+    spec:
+      template:
+        metadata:
+          labels:
+            cronowner: '{{ app_name }}'
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: '{{ app_name }}'
+              image: '{{ docker_image }}'
+              args:
+                - /bin/sh
+                - -c
+                - |
+                  echo "Hello! from namespace $CURRENT_NAMESPACE while using image {{ docker_image }} at $(date)" >> /data/log.txt &&
+                  echo "Log file contents:" &&
+                  cat /data/log.txt
+              env:
+                - name: CURRENT_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: '{{ pvc_name }}'

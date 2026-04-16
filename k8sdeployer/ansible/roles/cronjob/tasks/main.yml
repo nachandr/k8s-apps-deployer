@@ -7,6 +7,14 @@
   import_tasks: deploy.yml
   when: with_deploy | default(false) | bool
 
+- name: Deploy application with PVC
+  import_tasks: deploy_with_pvc.yml
+  when: with_deploy_with_pvc | default(false) | bool
+
 - name: Validate application
   import_tasks: validate.yml
   when: with_validate | default(false) | bool
+
+- name: Validate application with PVC
+  import_tasks: validate_with_pvc.yml
+  when: with_validate_with_pvc | default(false) | bool
