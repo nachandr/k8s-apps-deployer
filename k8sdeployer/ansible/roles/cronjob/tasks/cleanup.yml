@@ -12,6 +12,20 @@
     api_key: "{{ token }}"
     verify_ssl: "{{ verify_ssl }}"
 
+- name: Delete PVC if present
+  k8s:
+    state: absent
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ pvc_name }}"
+        namespace: "{{ namespace }}"
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+  when: with_deploy_with_pvc | default(false) | bool
+
 - name: Remove namespace
   k8s:
     host: "{{ server }}"

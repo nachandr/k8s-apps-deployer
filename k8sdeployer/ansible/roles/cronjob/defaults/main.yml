@@ -18,3 +18,7 @@ with_deploy_with_pvc: false
 
 with_validate_internal_external_images: false
 with_validate_with_pvc: false
+
+# PVC settings (used when with_deploy_with_pvc or with_validate_with_pvc is true)
+pvc_name: cronjob-data-pvc
+pvc_size: 1Gi

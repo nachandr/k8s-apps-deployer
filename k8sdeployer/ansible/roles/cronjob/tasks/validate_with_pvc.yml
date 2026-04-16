@@ -1,0 +1,67 @@
+---
+- name: Check PVC exists and is bound
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    kind: PersistentVolumeClaim
+    namespace: "{{ namespace }}"
+    name: "{{ pvc_name }}"
+  register: pvc_info
+  until: >-
+    pvc_info.resources | length > 0 and
+    pvc_info.resources[0].status.phase == "Bound"
+  retries: 10
+  delay: 5
+
+- name: Assert PVC is bound
+  assert:
+    that:
+      - pvc_info.resources | length > 0
+      - pvc_info.resources[0].status.phase == "Bound"
+    fail_msg: "PVC {{ pvc_name }} does not exist or is not Bound"
+    success_msg: "PVC {{ pvc_name }} is Bound"
+
+- name: Check CronJob exists and is scheduled
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    kind: CronJob
+    namespace: "{{ namespace }}"
+    name: "{{ ext_app_name }}"
+  register: cronjob_info
+  until: cronjob_info.resources | length > 0
+  retries: 10
+  delay: 5
+
+- name: Assert CronJob is scheduled
+  assert:
+    that:
+      - cronjob_info.resources | length > 0
+      - cronjob_info.resources[0].spec.schedule is defined
+    fail_msg: "CronJob {{ ext_app_name }} does not exist or has no schedule"
+    success_msg: "CronJob {{ ext_app_name }} is properly scheduled"
+
+- name: Wait for at least one Job pod to reach Succeeded
+  k8s_info:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    kind: Pod
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "cronowner={{ ext_app_name }}"
+    field_selectors:
+      - "status.phase=Succeeded"
+  register: job_pods
+  until: job_pods.resources | length > 0
+  retries: 15
+  delay: 10
+
+- name: Assert at least one job pod succeeded
+  assert:
+    that:
+      - job_pods.resources | length > 0
+    fail_msg: "No Succeeded job pods found for CronJob {{ ext_app_name }}"
+    success_msg: "CronJob {{ ext_app_name }} has run at least one successful job pod"
