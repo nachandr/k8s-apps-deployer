@@ -56,24 +56,84 @@
     pod_name: "{{ (pod_resources|first).metadata.name }}"
   when: pod_resources | length > 0
 
-- name: Wait until service ready for connections
-  shell: "kubectl logs {{ pod_name }} -n {{ namespace }} -c {{ app_name }} --tail=50"
-  register: result
-  until: result.stdout is search('socket.*/var/lib/mysql/mysql.sock.*port.*3306')
+- name: Debug selected pod for validation
+  debug:
+    msg: "Validating pod {{ pod_name }} in namespace {{ namespace }}"
+  when: pod_name is defined
+
+- name: Wait until service ready for connections (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/sh -c "test -S /var/lib/mysql/mysql.sock"
+  register: mysql_ready
+  until: mysql_ready.rc == 0
   retries: 30
   delay: 5
 
+- name: Debug mysql readiness validation result
+  debug:
+    msg:
+      validation: "mysql_socket_ready"
+      pod: "{{ pod_name }}"
+      rc: "{{ mysql_ready.rc }}"
+      stdout: "{{ mysql_ready.stdout | default('') }}"
+      stderr: "{{ mysql_ready.stderr | default('') }}"
+
 # The data file contains 100 items. We verify that there are 101 lines in the stdout (100 data, plus the header)
 - name: Query the inserted data
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/bash -c \"mysql -uroot MYSQL_DATABASE -e 'select * from authors'\""
-  register: result
-  until: result.rc == 0 and (result.stdout_lines | length == 101)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/bash -c "mysql -uroot MYSQL_DATABASE -e 'select * from authors'"
+  register: query_result
+  until: query_result.rc == 0 and (query_result.stdout_lines | length == 101)
   retries: 5
   delay: 5
 
+- name: Debug mysql query validation result
+  debug:
+    msg:
+      validation: "authors_table_query"
+      rc: "{{ query_result.rc }}"
+      row_count_with_header: "{{ query_result.stdout_lines | length }}"
+      first_lines: "{{ query_result.stdout_lines[:3] | default([]) }}"
+      stderr: "{{ query_result.stderr | default('') }}"
+
 - name: Validate test1 file has correct md5 hash
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/sh -c ' cd /test-data; [ \"$(md5sum test1)\" == \"$(cat test1.md5)\" ] '"
-  register: output
-  until: output.rc == 0
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/sh -c "cd /test-data; [ \"$(md5sum test1)\" = \"$(cat test1.md5)\" ]"
+  register: checksum_result
+  until: checksum_result.rc == 0
   retries: 5
   delay: 5
+
+- name: Debug checksum validation result
+  debug:
+    msg:
+      validation: "test1_md5_match"
+      rc: "{{ checksum_result.rc }}"
+      stdout: "{{ checksum_result.stdout | default('') }}"
+      stderr: "{{ checksum_result.stderr | default('') }}"
+
+- name: Debug mysql validation summary
+  debug:
+    msg:
+      pod_validation: "passed"
+      mysql_ready_validation: "{{ mysql_ready.rc == 0 }}"
+      query_validation: "{{ query_result.rc == 0 and (query_result.stdout_lines | length == 101) }}"
+      checksum_validation: "{{ checksum_result.rc == 0 }}"

@@ -104,36 +104,73 @@
   set_fact:
     pod_name: "{{ (pod.resources | first).metadata.name }}"
 
-- name: Copy mysql provision script to pod
-  shell: "kubectl cp {{ role_path }}/files/data.sql {{ namespace }}/{{ pod_name }}:/opt/app-root/src/data.sql -c {{ app_name }}"
-  register: result
+- name: Copy mysql provision script to pod (kubernetes.core.k8s_cp)
+  kubernetes.core.k8s_cp:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    local_path: "{{ role_path }}/files/data.sql"
+    remote_path: /opt/app-root/src/data.sql
+    state: to_pod
+  register: copy_result
   retries: 10
-  until: result.rc == 0
+  until: copy_result is succeeded
   delay: 5
 
-- name: Wait until service ready for connections
-  shell: "kubectl logs {{ pod_name }} -n {{ namespace }} -c {{ app_name }} --tail=50"
-  register: result
-  until: result.stdout is search('socket.*/var/lib/mysql/mysql.sock.*port.*3306')
+- name: Wait until service ready for connections (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/sh -c "test -S /var/lib/mysql/mysql.sock"
+  register: mysql_ready
+  until: mysql_ready.rc == 0
   retries: 30
   delay: 5
 
-- name: Provision the mysql database
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/bash -c 'mysql -uroot MYSQL_DATABASE < /opt/app-root/src/data.sql'"
-  register: result
-  until: result.rc == 0
+- name: Provision the mysql database (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/bash -c "mysql -uroot MYSQL_DATABASE < /opt/app-root/src/data.sql"
+  register: provision_result
+  until: provision_result.rc == 0
   retries: 5
 
-- name: Add dummy data into {{ app_name }}-data1 pvc
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/sh -c \"dd if=/dev/urandom of=/test-data/test1 bs=10M count=10\""
-  register: output
-  until: output.rc == 0
+- name: Add dummy data into {{ app_name }}-data1 pvc (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/sh -c "dd if=/dev/urandom of=/test-data/test1 bs=10M count=10"
+  register: dd_result
+  until: dd_result.rc == 0
   retries: 5
 
-- name: Create md5 hashes for the files
-  shell: "kubectl exec {{ pod_name }} -n {{ namespace }} -c {{ app_name }} -- /bin/sh -c \"cd /test-data; md5sum test1 > test1.md5\""
-  register: output
-  until: output.rc == 0
+- name: Create md5 hashes for the files (kubernetes.core.k8s_exec)
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ pod_name }}"
+    container: "{{ app_name }}"
+    command: /bin/sh -c "cd /test-data; md5sum test1 > test1.md5"
+  register: md5_result
+  until: md5_result.rc == 0
   retries: 5
 
 - name: Pause After Create md5 hashes for the files
