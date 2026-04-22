@@ -4,6 +4,15 @@ app_name: app-with-empty-pvc-pod
 # Set this value to true if using a non cluster admin user
 non_admin_user: false
 
+# Set to true to add data to the PVC
+add_data: false
+
+# File to create in /data (only if add_data is true)
+file_name: testfile.txt
+
+# Size in MB for the test file (only if add_data is true)
+file_size: 1
+
 with_cleanup: false
 with_deploy: false
 with_validate: false

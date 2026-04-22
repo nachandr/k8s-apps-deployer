@@ -42,3 +42,27 @@
   register: pod
   until: "true in (pod | json_query('resources[].status.containerStatuses[].ready'))"
   retries: 30
+
+- name: Write data to PVC
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ app_name }}"
+    container: test-container
+    command: /bin/sh -c "dd if=/dev/urandom of=/data/{{ file_name }} bs=1M count={{ file_size }}"
+  register: dd_result
+  when: add_data | bool
+
+- name: Create MD5 checksum for the file
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ app_name }}"
+    container: test-container
+    command: /bin/sh -c "cd /data && md5sum {{ file_name }} > {{ file_name }}.md5"
+  register: md5_result
+  when: add_data | bool

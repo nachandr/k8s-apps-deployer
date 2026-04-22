@@ -30,6 +30,35 @@
 - debug:
     msg: "{{ output.stdout }}"
 
-- fail:
+- name: Validate PVC is empty
+  fail:
     msg: "Expected no user files in /data (lost+found is ignored)"
-  when: output.stdout != ''
+  when:
+    - not (add_data | bool)
+    - output.stdout != ''
+
+- name: Validate data file exists
+  fail:
+    msg: "Expected file /data/{{ file_name }} to exist"
+  when:
+    - add_data | bool
+    - "'/data/' + file_name not in output.stdout"
+
+- name: Verify MD5 checksum
+  kubernetes.core.k8s_exec:
+    host: "{{ server }}"
+    api_key: "{{ token }}"
+    verify_ssl: "{{ verify_ssl }}"
+    namespace: "{{ namespace }}"
+    pod: "{{ (pod.resources | first).metadata.name }}"
+    container: test-container
+    command: /bin/sh -c "cd /data && md5sum -c {{ file_name }}.md5"
+  register: md5_check
+  when: add_data | bool
+
+- name: Validate checksum verification passed
+  fail:
+    msg: "MD5 checksum verification failed"
+  when:
+    - add_data | bool
+    - md5_check.rc != 0
